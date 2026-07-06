@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SlopShield AI
 
-## Getting Started
+**A telemetry-based "AI slop" risk auditor for GitHub Pull Requests.**
 
-First, run the development server:
+Paste a PR URL. SlopShield pulls its behavioral telemetry from the GitHub API — commit timeline, churn, file mix, test movement — derives a set of engineering-signal metrics, and asks Gemini 2.5 Flash to render a structured risk verdict. The model never sees the diff itself, only the shape of how the change was made. That keeps every audit small, fast, and orthogonal to text-based "AI detector" tools that slop authors already know how to evade.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Why telemetry, not text
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Human engineering leaves a temporal signature: code accretes over hours or days, deletions accompany additions, tests move with source. Low-effort AI-generated PRs tend to arrive as a single monolithic paste — thousands of added lines minutes after the first commit, near-zero deletions, no tests touched. SlopShield quantifies that signature (code velocity, churn density, addition dominance, test-file ratio, largest single-file addition) *before* the AI audit ever runs, then has Gemini reason over the numbers with a strict JSON response schema — never free text to regex-scrape.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## What's in the box
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **PR audit pipeline** — GitHub REST → Metadata Cruncher (`lib/metrics.ts`) → Gemini structured audit (`lib/gemini.ts`) → Supabase, end to end in `app/actions.ts`.
+- **Auth + per-user history** — GitHub OAuth via Supabase, Postgres RLS scopes every row to its owner.
+- **Zero-login demo** (`/demo`) — the full dashboard rendered over representative sample data, no credentials required.
+- **Nightly fleet rollup** (`app/api/cron/route.ts`) — aggregates the trailing 30 days into per-repo daily health snapshots, guarded by a constant-time bearer-token check.
+- **Embeddable README badge** (`app/api/badge/[owner]/[repo]/[number]/route.ts`) — a public, unauthenticated SVG endpoint that runs (and caches) the same audit pipeline so anyone can drop a live risk badge into their own repo:
 
-## Learn More
+  ```md
+  [![SlopShield](https://your-deployment.example/api/badge/OWNER/REPO/123)](https://your-deployment.example)
+  ```
 
-To learn more about Next.js, take a look at the following resources:
+  Cached 6 hours per PR in `badge_scans` (a public-read table, separate from the private per-user `scans` table), with a global + per-IP rate limiter in front of the expensive path so the public endpoint can't be used to burn the GitHub/Gemini quota.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Stack
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Next.js 16 (App Router), Tailwind v4, Supabase (Postgres + Auth + RLS), `@google/genai` (Gemini 2.5 Flash, structured output), Recharts, shadcn/Base UI.
 
-## Deploy on Vercel
+## Security notes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Every PR URL is parsed with a strict `https://github.com/{owner}/{repo}/pull/{number}` grammar before anything reaches an outbound request (`lib/github.ts`) — no open redirect / SSRF surface.
+- Gemini's response schema is defense-in-depth, not the only guard: every field is re-clamped and re-validated server-side before it touches the database or the UI (`normalizeAudit` in `lib/gemini.ts`).
+- The service-role Supabase client (`lib/supabase/admin.ts`) is `server-only` and used exclusively by the cron job and the badge route — it never reaches client-bundled code.
+- Internal errors are logged server-side only; the client gets either a user-correctable message (bad URL, GitHub rate limit) or a single generic failure notice.
+- Both the expensive paths — the authenticated "Run audit" action and the public badge route — are rate-limited (`lib/rate-limit.ts`), and a same-user re-scan of an identical PR within a 10-minute cooldown reuses the prior verdict instead of re-billing GitHub/Gemini.
+- Outbound GitHub requests carry a 10s timeout (`AbortSignal.timeout`) so a hung upstream request can't hang the request indefinitely.
+- Deleting a scan is scoped twice over: the server action filters by `user_id`, and Postgres RLS (`scans_delete_own`) enforces it independently.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Setup
+
+1. Create a free [Supabase](https://supabase.com) project, then run `supabase/schema.sql` in its SQL Editor (creates `scans`, `repo_health_snapshots`, and `badge_scans`, all with RLS).
+2. Enable the GitHub provider under **Authentication → Providers**, with a GitHub OAuth App pointing its callback at `https://YOUR-PROJECT-REF.supabase.co/auth/v1/callback`.
+3. Get a free [Gemini API key](https://aistudio.google.com/apikey).
+4. Copy `.env.example` to `.env.local` and fill in every value — Supabase URL/anon key/service-role key, `GEMINI_API_KEY`, an optional `GITHUB_TOKEN` (raises the REST rate limit from 60 to 5000 req/hour), and a `CRON_SECRET` (`openssl rand -hex 32`).
+5. `npm install && npm run dev`, then open `http://localhost:3000`.
+
+On Vercel, set the same env vars as Project Settings → Environment Variables; a `CRON_SECRET` variable is auto-attached by Vercel Cron as the bearer token for `/api/cron`.
