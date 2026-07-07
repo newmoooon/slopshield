@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  EyeIcon,
   GaugeIcon,
   Loader2Icon,
   LockIcon,
@@ -79,40 +80,45 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-background p-6">
-      <div className="grid w-full max-w-4xl gap-8 lg:grid-cols-[1.1fr_1fr] lg:items-center">
-        <section className="space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <ShieldCheckIcon className="size-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">
-                SlopShield AI
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Pull-request forensics for the AI-slop era
-              </p>
-            </div>
+      <div className="grid w-full max-w-5xl gap-10 lg:grid-cols-[1.2fr_1fr] lg:items-center">
+        <section className="space-y-8">
+          <div className="flex items-center gap-2.5 text-sm font-medium">
+            <ShieldCheckIcon className="size-4" aria-hidden />
+            <span className="tracking-tight">slopshield</span>
+            <span className="accent-italic text-xs">pull-request forensics</span>
           </div>
 
-          <p className="max-w-md text-balance text-muted-foreground">
-            Text scanners are trivially bypassed. SlopShield audits the human
-            behavioral telemetry behind every Pull Request — how fast the code
-            arrived, how it churned, whether tests moved with it — and lets an
-            AI auditor call the risk before your reviewers burn hours on it.
-          </p>
+          <div className="space-y-5">
+            <h1 className="max-w-md text-balance text-4xl font-semibold leading-[1.06] tracking-tight sm:text-5xl">
+              Ship code,
+              <br />
+              <span className="accent-italic font-normal">not slop.</span>
+            </h1>
+            <p className="max-w-md text-balance text-muted-foreground">
+              Text detectors are trivially bypassed. SlopShield reads the{" "}
+              <em>behavior</em> behind every Pull Request — how fast the code
+              arrived, how it churned, whether tests moved with it — and calls
+              the risk before your reviewers burn hours on it.
+            </p>
+          </div>
 
-          <ul className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             {FEATURE_BULLETS.map((feature) => (
-              <li key={feature.title} className="flex gap-3">
-                <feature.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">{feature.title}</p>
-                  <p className="text-sm text-muted-foreground">{feature.body}</p>
-                </div>
-              </li>
+              <div
+                key={feature.title}
+                className="rounded-xl border border-dashed border-border p-4"
+              >
+                <feature.icon
+                  className="mb-3 size-4 text-muted-foreground"
+                  aria-hidden
+                />
+                <p className="text-sm font-medium leading-snug">{feature.title}</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                  {feature.body}
+                </p>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
 
         <Card>
@@ -124,7 +130,7 @@ export default function LoginPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Button
-              className="w-full"
+              className="w-full rounded-full"
               size="lg"
               onClick={signInWithGitHub}
               disabled={pending}
@@ -135,6 +141,16 @@ export default function LoginPage() {
                 <GitHubMark className="size-4" />
               )}
               Continue with GitHub
+            </Button>
+            <Button
+              render={<a href="/demo" />}
+              nativeButton={false}
+              variant="outline"
+              size="lg"
+              className="w-full rounded-full border-dashed"
+            >
+              <EyeIcon className="size-4" aria-hidden />
+              Explore the live demo — no account
             </Button>
             <Separator />
             <p className="text-xs text-muted-foreground">

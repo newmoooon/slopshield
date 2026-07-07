@@ -19,18 +19,27 @@ const REVIEW_LINES_PER_HOUR = 400;
 const TEST_FILE_PATTERN =
   /(^|\/)(tests?|__tests__|spec|e2e)(\/|$)|\.(test|spec)\.[jt]sx?$|_test\.(go|py|rb|ex|exs)$|Tests?\.(java|kt|swift|cs)$/i;
 
+/**
+ * Hours between two ISO timestamps, floored at 5 minutes, NaN-proof.
+ * An unparseable date yields NaN from getTime(), and Math.max(NaN, x) is NaN —
+ * which would cascade into a NaN velocity and a failed DB insert. Unparseable
+ * or reversed (rebase-dated) timestamps degrade to 0 ("unknown") instead.
+ */
+function hoursBetween(startIso: string, endIso: string): number {
+  const deltaMs = new Date(endIso).getTime() - new Date(startIso).getTime();
+  if (!Number.isFinite(deltaMs)) return 0;
+  return Math.max(deltaMs / 3_600_000, 5 / 60);
+}
+
 export function crunchMetrics(pr: PullRequestMetadata): CrunchedMetrics {
   const totalChurn = pr.additions + pr.deletions;
 
   // Code Velocity: lines added / hours between first commit and PR creation.
   // A floor of 5 minutes prevents a same-minute commit+open from producing an
   // absurd division while still flagging it as extreme velocity.
-  let devWindowHours = 0;
-  if (pr.firstCommitAt) {
-    const deltaMs =
-      new Date(pr.prCreatedAt).getTime() - new Date(pr.firstCommitAt).getTime();
-    devWindowHours = Math.max(deltaMs / 3_600_000, 5 / 60);
-  }
+  const devWindowHours = pr.firstCommitAt
+    ? hoursBetween(pr.firstCommitAt, pr.prCreatedAt)
+    : 0;
   const codeVelocityPerHour =
     devWindowHours > 0 ? pr.additions / devWindowHours : pr.additions * 12;
 
@@ -69,12 +78,9 @@ export function crunchMetrics(pr: PullRequestMetadata): CrunchedMetrics {
  * an acceptable cosmetic loss on a cache hit.
  */
 export function metricsFromScan(scan: ScanRecord): CrunchedMetrics {
-  let devWindowHours = 0;
-  if (scan.first_commit_at) {
-    const deltaMs =
-      new Date(scan.pr_created_at).getTime() - new Date(scan.first_commit_at).getTime();
-    devWindowHours = Math.max(deltaMs / 3_600_000, 5 / 60);
-  }
+  const devWindowHours = scan.first_commit_at
+    ? hoursBetween(scan.first_commit_at, scan.pr_created_at)
+    : 0;
 
   const totalChurn = scan.additions + scan.deletions;
   const estReviewHours = totalChurn / REVIEW_LINES_PER_HOUR;

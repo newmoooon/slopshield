@@ -27,8 +27,12 @@ function svgResponse(svg: string, status = 200) {
 }
 
 function clientIp(request: NextRequest): string {
+  // Prefer x-real-ip: on Vercel it is set by the platform and can't be
+  // spoofed by the caller, unlike a client-supplied x-forwarded-for prefix.
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
   const forwarded = request.headers.get("x-forwarded-for");
-  return forwarded?.split(",")[0]?.trim() ?? "unknown";
+  return forwarded?.split(",")[0]?.trim() || "unknown";
 }
 
 /**

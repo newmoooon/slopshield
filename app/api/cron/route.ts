@@ -38,10 +38,13 @@ export async function GET(request: NextRequest) {
     const PAGE_SIZE = 1000;
     let scansSeen = 0;
     for (let page = 0; ; page += 1) {
+      // .order() is load-bearing: PostgREST does not guarantee row order, so
+      // .range() pages without a stable sort can skip or double-count rows.
       const { data: scans, error } = await supabase
         .from("scans")
         .select("repo_full_name, risk_score, fragility_score, created_at")
         .gte("created_at", since)
+        .order("id", { ascending: true })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
       if (error) throw error;

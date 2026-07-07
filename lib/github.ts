@@ -1,6 +1,5 @@
 import "server-only";
 
-import { getRandomUserAgent } from "@/lib/user-agents";
 import type { PullRequestMetadata, PullRequestRef } from "@/lib/types";
 
 const GITHUB_API = "https://api.github.com";
@@ -67,12 +66,14 @@ export function parsePullRequestUrl(input: string): PullRequestRef {
   return { owner, repo, number };
 }
 
-/** Builds authenticated, bot-resilient headers for every GitHub API call. */
+/** Builds authenticated headers for every GitHub API call. GitHub's API
+ *  guidelines require a real, identifying User-Agent — never a spoofed
+ *  browser string. */
 function buildHeaders(): HeadersInit {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": getRandomUserAgent(),
+    "User-Agent": "slopshield-ai (+https://github.com/slopshield)",
   };
   const token = process.env.GITHUB_TOKEN;
   if (token) {

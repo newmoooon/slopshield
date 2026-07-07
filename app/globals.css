@@ -105,12 +105,14 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
+  /* Variant-inspired: near-black canvas, surfaces barely lifted off it —
+     hierarchy comes from hairline borders and type, not surface contrast. */
+  --background: oklch(0.1 0 0);
+  --foreground: oklch(0.93 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.93 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.93 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
@@ -148,4 +150,20 @@
   html {
     @apply font-sans;
   }
+}
+
+/* ── Variant-inspired chrome ─────────────────────────────────────────
+   Surfaces are framed by hairline *dashed* borders on a near-black
+   canvas; emphasis words in display copy are italic and dimmed.
+   Deliberately unlayered so these win over layered component styles. */
+.dark [data-slot="card"] {
+  border-style: dashed;
+  box-shadow: none;
+}
+.dark table tr {
+  border-bottom-style: dashed;
+}
+.accent-italic {
+  font-style: italic;
+  color: var(--muted-foreground);
 }

@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import {
   ActivityIcon,
   BanknoteIcon,
+  CheckIcon,
+  ClipboardIcon,
   ExternalLinkIcon,
   FileStackIcon,
   FlaskConicalIcon,
@@ -13,6 +16,9 @@ import {
   RadarIcon,
   WrenchIcon,
 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
 
 import { BadgeSnippet } from "@/components/badge-snippet";
 import { RiskBadge, riskLevelTextClass } from "@/components/risk-badge";
@@ -33,6 +39,31 @@ import {
 } from "@/lib/metrics";
 import type { CrunchedMetrics, ScanRecord } from "@/lib/types";
 
+/** Renders the verdict as a GitHub-flavored Markdown review comment, so the
+ *  audit lands where the merge decision actually happens. */
+function buildPrComment(scan: ScanRecord, metrics: CrunchedMetrics): string {
+  // Model-authored text can contain newlines or pipes that would break the
+  // blockquote / table structure of the generated Markdown — flatten them.
+  const flat = (text: string) => text.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim();
+  const signals = scan.key_signals.length
+    ? `\n**Key signals:** ${scan.key_signals.map(flat).join(" · ")}\n`
+    : "";
+  return `## 🛡️ SlopShield audit — **${scan.risk_score}/100 · ${scan.risk_level}**
+
+> ${flat(scan.reviewer_warning)}
+
+| Behavioral signal | Value |
+| --- | --- |
+| Code velocity | ${formatCompact(metrics.codeVelocityPerHour)} lines/h over a ${formatHours(metrics.devWindowHours)} dev window |
+| Churn density | ${formatCompact(metrics.churnPerFile)} lines/file across ${scan.changed_files} files |
+| Addition dominance | ${Math.round(metrics.additionDominance * 100)}% (+${formatCompact(scan.additions)} / −${formatCompact(scan.deletions)}) |
+| Test movement | ${Math.round(metrics.testFileRatio * 100)}% of touched files |
+| Commits | ${scan.commit_count} |
+| Est. review burden | ${formatHours(metrics.estReviewHours)} |
+${signals}
+<sub>Verdict from PR behavioral telemetry only — the model never saw the diff. · [SlopShield](${scan.pr_url})</sub>`;
+}
+
 /**
  * Verdict panel for the most recent scan: a hero risk figure (a number is the
  * message — no gauge chart), the two-sentence reviewer warning, the crunched
@@ -45,6 +76,19 @@ export function ScanResultCard({
   scan: ScanRecord;
   metrics: CrunchedMetrics;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyPrComment() {
+    try {
+      await navigator.clipboard.writeText(buildPrComment(scan, metrics));
+      setCopied(true);
+      toast.success("Verdict copied — paste it into the PR review thread.");
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      toast.error("Clipboard unavailable in this browser.");
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -68,7 +112,22 @@ export function ScanResultCard({
               {scan.pr_title} · by {scan.pr_author}
             </CardDescription>
           </div>
-          <RiskBadge level={scan.risk_level} />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full border-dashed"
+              onClick={copyPrComment}
+            >
+              {copied ? (
+                <CheckIcon className="size-3.5" aria-hidden />
+              ) : (
+                <ClipboardIcon className="size-3.5" aria-hidden />
+              )}
+              Copy as PR comment
+            </Button>
+            <RiskBadge level={scan.risk_level} />
+          </div>
         </div>
       </CardHeader>
 
