@@ -149,8 +149,9 @@ export async function auditPullRequest(
 /**
  * Defense-in-depth on model output: even with a response schema, every field
  * is re-validated and clamped before it touches the database or the UI.
+ * Exported for the unit-test suite; not part of the public server API.
  */
-function normalizeAudit(raw: unknown): GeminiAudit {
+export function normalizeAudit(raw: unknown): GeminiAudit {
   if (typeof raw !== "object" || raw === null) {
     throw new Error("Gemini response is not an object");
   }

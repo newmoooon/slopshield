@@ -5,7 +5,7 @@ import "server-only";
  * instance guarding a low-traffic public endpoint; not shared across
  * serverless invocations, so it's defense-in-depth rather than a hard cap.
  */
-class FixedWindowLimiter {
+export class FixedWindowLimiter {
   private readonly windowMs: number;
   private readonly max: number;
   private counts = new Map<string, { count: number; resetAt: number }>();

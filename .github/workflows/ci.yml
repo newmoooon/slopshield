@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: Lint & build
+    name: Lint, test & build
     runs-on: ubuntu-latest
     env:
       # Placeholder values — the build only needs the vars to exist.
@@ -28,4 +28,5 @@ jobs:
       # omits Linux-only optional deps (@emnapi/*); install adds them at runtime.
       - run: npm install --no-audit --no-fund
       - run: npm run lint
+      - run: npm test
       - run: npm run build
