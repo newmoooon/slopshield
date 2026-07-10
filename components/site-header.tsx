@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LogOutIcon, ShieldCheckIcon } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
@@ -24,6 +25,20 @@ export function SiteHeader({ user }: { user: User }) {
           <span className="hidden rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:inline">
             PR Forensics
           </span>
+          <nav className="ml-3 flex items-center gap-1 text-sm">
+            <Link
+              href="/"
+              className="rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/radar"
+              className="rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Radar
+            </Link>
+          </nav>
         </div>
 
         <div className="flex items-center gap-3">

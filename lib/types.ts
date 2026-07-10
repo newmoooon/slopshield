@@ -84,3 +84,47 @@ export interface ScanRecord {
 export type AnalyzeResult =
   | { ok: true; scan: ScanRecord; metrics: CrunchedMetrics }
   | { ok: false; error: string };
+
+/** Parsed identity of a repository (Repo Radar input). */
+export interface RepoRef {
+  owner: string;
+  repo: string;
+}
+
+/** One open PR in a Repo Radar sweep, with its crunched metrics and verdict. */
+export interface RadarPullRequest {
+  number: number;
+  title: string;
+  author: string;
+  url: string;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  prCreatedAt: string;
+  metrics: CrunchedMetrics;
+  riskScore: number;
+  riskLevel: RiskLevel;
+  /** One-line reviewer note for this PR from the repo-level audit. */
+  note: string;
+}
+
+/** Repo-level verdict Gemini returns for a Radar sweep. */
+export interface RepoAudit {
+  repoRiskScore: number;
+  repoSummary: string;
+  prVerdicts: Array<{ number: number; riskScore: number; note: string }>;
+}
+
+/** Discriminated result returned by the Repo Radar server action. */
+export type RadarResult =
+  | {
+      ok: true;
+      repo: string;
+      openPrCount: number;
+      scannedCount: number;
+      repoRiskScore: number;
+      repoRiskLevel: RiskLevel;
+      repoSummary: string;
+      prs: RadarPullRequest[];
+    }
+  | { ok: false; error: string };

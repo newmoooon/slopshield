@@ -45,3 +45,7 @@ export const badgeIpLimiter = new FixedWindowLimiter(10, 60_000);
 
 /** Caps authenticated dashboard audits per signed-in user (keyed by Supabase user id). */
 export const scanUserLimiter = new FixedWindowLimiter(8, 60_000);
+
+/** Caps Repo Radar sweeps per user — each sweep fans out to ~25 GitHub calls
+ *  plus one Gemini call, so it gets a much tighter window than single scans. */
+export const radarUserLimiter = new FixedWindowLimiter(3, 5 * 60_000);

@@ -5,6 +5,7 @@ import type {
   CrunchedMetrics,
   GeminiAudit,
   PullRequestMetadata,
+  RepoAudit,
   RiskLevel,
 } from "@/lib/types";
 
@@ -192,4 +193,147 @@ function scoreToLevel(score: number): RiskLevel {
   if (score >= 50) return "HIGH";
   if (score >= 25) return "MODERATE";
   return "LOW";
+}
+
+// ── Repo Radar: one structured audit call over a whole PR queue ────────────
+
+const REPO_AUDIT_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    repoRiskScore: {
+      type: Type.INTEGER,
+      description:
+        "Overall AI-slop exposure of this repository's open PR queue, 0-100.",
+    },
+    repoSummary: {
+      type: Type.STRING,
+      description:
+        "Two to three concise sentences a maintainer reads before triaging the queue: overall shape, which PRs to review first, and why.",
+    },
+    prVerdicts: {
+      type: Type.ARRAY,
+      description: "One verdict per PR in the telemetry table, keyed by PR number.",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          number: { type: Type.INTEGER, description: "The PR number this verdict is for." },
+          riskScore: { type: Type.INTEGER, description: "AI Slop Risk Score for this PR, 0-100." },
+          note: {
+            type: Type.STRING,
+            description: "One short sentence naming the decisive signal for this PR.",
+          },
+        },
+        required: ["number", "riskScore", "note"],
+      },
+    },
+  },
+  required: ["repoRiskScore", "repoSummary", "prVerdicts"],
+} as const;
+
+export interface RepoAuditInput {
+  number: number;
+  title: string;
+  additions: number;
+  deletions: number;
+  filesChanged: number;
+  metrics: CrunchedMetrics;
+}
+
+/**
+ * Scores every open PR in one request instead of N: the model sees the whole
+ * queue at once, so scores are calibrated relative to the repo's own baseline
+ * (a monorepo where everyone lands 2k-line PRs reads differently than a
+ * library averaging 80-line patches).
+ */
+export async function auditRepository(
+  repoFullName: string,
+  prs: RepoAuditInput[]
+): Promise<RepoAudit> {
+  const telemetry = {
+    repository: repoFullName,
+    openPullRequests: prs.map((p) => ({
+      number: p.number,
+      // Attacker-controlled free text, capped; the system instruction pins it as data.
+      title: p.title.slice(0, 120),
+      linesAdded: p.additions,
+      linesDeleted: p.deletions,
+      filesChanged: p.filesChanged,
+      devWindowHours: p.metrics.devWindowHours,
+      codeVelocityLinesAddedPerHour: p.metrics.codeVelocityPerHour,
+      additionDominance: p.metrics.additionDominance,
+      testFileRatio: p.metrics.testFileRatio,
+      largestSingleFileAdditions: p.metrics.largestFileAdditions,
+    })),
+  };
+
+  const response = await withTimeout(
+    getClient().models.generateContent({
+      model: MODEL,
+      contents: `Audit this repository's open Pull Request queue and return a verdict for the repo and for every PR listed.\n\n${JSON.stringify(telemetry, null, 2)}`,
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        responseMimeType: "application/json",
+        responseSchema: REPO_AUDIT_RESPONSE_SCHEMA,
+        temperature: 0.2,
+      },
+    }),
+    GEMINI_TIMEOUT_MS,
+    "Gemini repo audit"
+  );
+
+  const text = response.text;
+  if (!text) {
+    throw new Error("Gemini returned an empty response");
+  }
+
+  return normalizeRepoAudit(JSON.parse(text), prs.map((p) => p.number));
+}
+
+/**
+ * Same defense-in-depth as `normalizeAudit`, plus verdict↔PR reconciliation:
+ * verdicts for PR numbers we never sent are dropped, duplicates keep the
+ * first occurrence, and missing PRs are left to the caller's heuristic
+ * fallback. Exported for the unit-test suite.
+ */
+export function normalizeRepoAudit(raw: unknown, validNumbers: number[]): RepoAudit {
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error("Gemini response is not an object");
+  }
+  const candidate = raw as Record<string, unknown>;
+
+  const repoRiskScore = clampInt(candidate.repoRiskScore, 0, 100);
+
+  const repoSummary =
+    typeof candidate.repoSummary === "string" && candidate.repoSummary.trim().length > 0
+      ? candidate.repoSummary.trim().slice(0, 800)
+      : "Repo audit completed without a narrative summary. Review the per-PR scores below manually.";
+
+  const valid = new Set(validNumbers);
+  const seen = new Set<number>();
+  const prVerdicts: RepoAudit["prVerdicts"] = [];
+
+  if (Array.isArray(candidate.prVerdicts)) {
+    for (const entry of candidate.prVerdicts) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const v = entry as Record<string, unknown>;
+      const number = clampInt(v.number, 0, Number.MAX_SAFE_INTEGER);
+      if (!valid.has(number) || seen.has(number)) continue;
+      seen.add(number);
+      prVerdicts.push({
+        number,
+        riskScore: clampInt(v.riskScore, 0, 100),
+        note:
+          typeof v.note === "string" && v.note.trim().length > 0
+            ? v.note.trim().slice(0, 200)
+            : "No decisive signal reported.",
+      });
+    }
+  }
+
+  return { repoRiskScore, repoSummary, prVerdicts };
+}
+
+/** Maps a 0-100 risk score to its categorical band (shared banding rule). */
+export function riskScoreToLevel(score: number): RiskLevel {
+  return scoreToLevel(score);
 }

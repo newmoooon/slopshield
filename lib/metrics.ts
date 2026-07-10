@@ -145,3 +145,29 @@ export function formatHours(hours: number): string {
   if (hours < 48) return `${Math.round(hours * 10) / 10}h`;
   return `${Math.round((hours / 24) * 10) / 10}d`;
 }
+
+/**
+ * Deterministic slop-risk prescore from telemetry alone — no AI call. Used as
+ * the fallback verdict when a repo-sweep audit omits a PR, so Radar rows are
+ * never unscored, and mirrors the calibration bands the Gemini prompt states.
+ */
+export function heuristicRiskScore(
+  metrics: CrunchedMetrics,
+  additions: number
+): number {
+  let score = 0;
+
+  if (metrics.codeVelocityPerHour > 1500) score += 40;
+  else if (metrics.codeVelocityPerHour > 500) score += 25;
+
+  if (metrics.additionDominance > 0.95 && additions > 200) score += 20;
+  if (metrics.testFileRatio === 0 && additions > 100) score += 15;
+  if (metrics.largestFileAdditions > 1000) score += 15;
+  if (metrics.devWindowHours > 0 && metrics.devWindowHours < 0.25 && additions > 300)
+    score += 10;
+
+  // Small PRs are rarely slop regardless of velocity — sample size matters.
+  if (additions < 50) score = Math.min(score, 20);
+
+  return Math.min(score, 100);
+}

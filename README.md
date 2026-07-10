@@ -11,6 +11,8 @@ Human engineering leaves a temporal signature: code accretes over hours or days,
 ## What's in the box
 
 - **PR audit pipeline** — GitHub REST → Metadata Cruncher (`lib/metrics.ts`) → Gemini structured audit (`lib/gemini.ts`) → Supabase, end to end in `app/actions.ts`.
+- **Repo Radar** (`/radar`) — paste `owner/repo` and sweep the whole open-PR queue at once: telemetry is crunched per PR, then a *single* Gemini call scores every PR relative to the repo's own baseline (a monorepo of 2k-line PRs reads differently than a library of 80-line patches) and returns a maintainer-facing review order. PRs the model fails to score fall back to a deterministic telemetry heuristic (`heuristicRiskScore`) instead of rendering unscored. Stateless — sweeps never touch your scan history.
+- **Unit test suite** — 74 Vitest tests over the pure core: PR-URL/repo-input parsing (SSRF grammar), the Metadata Cruncher (division-by-zero, NaN-date, velocity-floor edges), the fixed-window rate limiter (fake timers), and both Gemini output normalizers (clamping, hallucinated-PR reconciliation). Runs in CI on every push.
 - **Auth + per-user history** — GitHub OAuth via Supabase, Postgres RLS scopes every row to its owner.
 - **Zero-login demo** (`/demo`) — the full dashboard rendered over representative sample data, no credentials required.
 - **Nightly fleet rollup** (`app/api/cron/route.ts`) — aggregates the trailing 30 days into per-repo daily health snapshots, guarded by a constant-time bearer-token check.

@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { PullRequestMetadata, PullRequestRef } from "@/lib/types";
+import type { PullRequestMetadata, PullRequestRef, RepoRef } from "@/lib/types";
 
 const GITHUB_API = "https://api.github.com";
 
@@ -64,6 +64,48 @@ export function parsePullRequestUrl(input: string): PullRequestRef {
   }
 
   return { owner, repo, number };
+}
+
+/**
+ * Validates a user-supplied repository reference for Repo Radar. Accepts the
+ * bare `owner/repo` shorthand or a full https://github.com/owner/repo URL,
+ * under the same character grammar as PR URLs — nothing else reaches an
+ * outbound request path.
+ */
+export function parseRepoInput(input: string): RepoRef {
+  const trimmed = input.trim();
+  if (trimmed.length === 0 || trimmed.length > 500) {
+    throw new GitHubFetchError("Enter a repository as owner/repo or a GitHub URL.");
+  }
+
+  let path = trimmed;
+  if (/^https?:\/\//i.test(trimmed)) {
+    let url: URL;
+    try {
+      url = new URL(trimmed);
+    } catch {
+      throw new GitHubFetchError("That doesn't look like a valid URL.");
+    }
+    if (url.protocol !== "https:") {
+      throw new GitHubFetchError("Only https:// GitHub URLs are accepted.");
+    }
+    if (url.hostname !== "github.com" && url.hostname !== "www.github.com") {
+      throw new GitHubFetchError("URL must point to github.com.");
+    }
+    path = url.pathname;
+  }
+
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length !== 2) {
+    throw new GitHubFetchError("Expected the format owner/repo.");
+  }
+
+  const [owner, repo] = segments;
+  if (!OWNER_PATTERN.test(owner) || !REPO_PATTERN.test(repo)) {
+    throw new GitHubFetchError("Repository path contains invalid characters.");
+  }
+
+  return { owner, repo };
 }
 
 /** Builds authenticated headers for every GitHub API call. GitHub's API
@@ -175,4 +217,32 @@ export async function fetchPullRequestMetadata(
       deletions: f.deletions,
     })),
   };
+}
+
+interface RawPullListItem {
+  number: number;
+}
+
+/**
+ * Repo Radar sweep: lists the repository's open PRs (most recently updated
+ * first), then pulls full telemetry for the first `limit` of them in
+ * parallel. Cost is ~3 GitHub calls per PR, which is why the sweep is capped
+ * and sits behind its own rate limiter.
+ */
+export async function fetchOpenPullRequests(
+  ref: RepoRef,
+  limit: number
+): Promise<{ openPrCount: number; prs: PullRequestMetadata[] }> {
+  const list = (await githubGet(
+    `/repos/${ref.owner}/${ref.repo}/pulls?state=open&sort=updated&direction=desc&per_page=30`
+  )) as RawPullListItem[];
+
+  const targets = list.slice(0, limit);
+  const prs = await Promise.all(
+    targets.map((item) =>
+      fetchPullRequestMetadata({ owner: ref.owner, repo: ref.repo, number: item.number })
+    )
+  );
+
+  return { openPrCount: list.length, prs };
 }
