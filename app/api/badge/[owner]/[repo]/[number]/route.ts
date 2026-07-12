@@ -58,13 +58,27 @@ export async function GET(
   }
 
   const prUrl = `https://github.com/${ref.owner}/${ref.repo}/pull/${ref.number}`;
-  const supabase = createAdminClient();
 
-  const { data: cached } = await supabase
-    .from("badge_scans")
-    .select("risk_score, risk_level, updated_at")
-    .eq("pr_url", prUrl)
-    .maybeSingle<{ risk_score: number; risk_level: RiskLevel; updated_at: string }>();
+  // The cache is an optimization, not a dependency: a misconfigured
+  // service-role key must degrade to "audit every view" (bounded by the rate
+  // limiters below) — loudly in the logs, invisibly to the badge viewer.
+  let supabase: ReturnType<typeof createAdminClient> | null = null;
+  try {
+    supabase = createAdminClient();
+  } catch (err) {
+    console.error("[badge] cache unavailable:", err);
+  }
+
+  let cached: { risk_score: number; risk_level: RiskLevel; updated_at: string } | null = null;
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("badge_scans")
+      .select("risk_score, risk_level, updated_at")
+      .eq("pr_url", prUrl)
+      .maybeSingle<{ risk_score: number; risk_level: RiskLevel; updated_at: string }>();
+    if (error) console.error("[badge] cache read failed:", error);
+    cached = data;
+  }
 
   if (cached && Date.now() - new Date(cached.updated_at).getTime() < CACHE_TTL_MS) {
     return svgResponse(renderRiskBadge(cached.risk_score, cached.risk_level));
@@ -82,17 +96,20 @@ export async function GET(
     const metrics = crunchMetrics(pr);
     const audit = await auditPullRequest(pr, metrics);
 
-    await supabase.from("badge_scans").upsert(
-      {
-        pr_url: prUrl,
-        repo_full_name: `${ref.owner}/${ref.repo}`,
-        pr_number: ref.number,
-        risk_score: audit.riskScore,
-        risk_level: audit.riskLevel,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "pr_url" }
-    );
+    if (supabase) {
+      const { error } = await supabase.from("badge_scans").upsert(
+        {
+          pr_url: prUrl,
+          repo_full_name: `${ref.owner}/${ref.repo}`,
+          pr_number: ref.number,
+          risk_score: audit.riskScore,
+          risk_level: audit.riskLevel,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "pr_url" }
+      );
+      if (error) console.error("[badge] cache write failed:", error);
+    }
 
     return svgResponse(renderRiskBadge(audit.riskScore, audit.riskLevel));
   } catch (err) {
