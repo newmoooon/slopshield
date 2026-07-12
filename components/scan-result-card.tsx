@@ -14,6 +14,7 @@ import {
   HourglassIcon,
   PlusIcon,
   RadarIcon,
+  Share2Icon,
   WrenchIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -72,11 +73,15 @@ ${signals}
 export function ScanResultCard({
   scan,
   metrics,
+  shareable = true,
 }: {
   scan: ScanRecord;
   metrics: CrunchedMetrics;
+  /** Hide the share button on the public report page itself. */
+  shareable?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   async function copyPrComment() {
     try {
@@ -84,6 +89,18 @@ export function ScanResultCard({
       setCopied(true);
       toast.success("Verdict copied — paste it into the PR review thread.");
       setTimeout(() => setCopied(false), 2500);
+    } catch {
+      toast.error("Clipboard unavailable in this browser.");
+    }
+  }
+
+  async function copyReportLink() {
+    try {
+      const url = `${window.location.origin}/report/${scan.repo_full_name}/${scan.pr_number}`;
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      toast.success("Public report link copied — anyone can open it, no sign-in.");
+      setTimeout(() => setLinkCopied(false), 2500);
     } catch {
       toast.error("Clipboard unavailable in this browser.");
     }
@@ -113,6 +130,21 @@ export function ScanResultCard({
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
+            {shareable ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full border-dashed"
+                onClick={copyReportLink}
+              >
+                {linkCopied ? (
+                  <CheckIcon className="size-3.5" aria-hidden />
+                ) : (
+                  <Share2Icon className="size-3.5" aria-hidden />
+                )}
+                Share report
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               size="sm"

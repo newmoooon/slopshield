@@ -1,10 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+
+const noopSubscribe = () => () => {};
+
+/** The page origin, hydration-safe: null on the server pass, resolved on the
+ *  client — reading window.location during render would make the two paints
+ *  differ (hydration mismatch). */
+function usePageOrigin(): string | null {
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => window.location.origin,
+    () => null
+  );
+}
 
 /** Copy-to-clipboard markdown for embedding this PR's live badge in a README. */
 export function BadgeSnippet({
@@ -15,10 +28,13 @@ export function BadgeSnippet({
   prNumber: number;
 }) {
   const [copied, setCopied] = useState(false);
-  const origin =
-    typeof window !== "undefined" ? window.location.origin : "https://your-deployment.example";
+  const origin = usePageOrigin();
+  if (!origin) return null;
+
   const badgeUrl = `${origin}/api/badge/${repoFullName}/${prNumber}`;
-  const markdown = `[![SlopShield](${badgeUrl})](${origin})`;
+  // The badge clicks through to the PR's public report page, so a README
+  // embed is a working entry point into the product, not just a picture.
+  const markdown = `[![SlopShield](${badgeUrl})](${origin}/report/${repoFullName}/${prNumber})`;
 
   async function handleCopy() {
     try {

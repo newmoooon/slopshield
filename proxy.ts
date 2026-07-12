@@ -54,7 +54,11 @@ export async function proxy(request: NextRequest) {
   const isAuthRoute =
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth") ||
-    pathname.startsWith("/demo");
+    pathname.startsWith("/demo") ||
+    // Public share surface: report pages and their OG cards are meant to be
+    // opened by anyone from a README badge or a pasted link.
+    pathname.startsWith("/report") ||
+    pathname.startsWith("/api/og");
 
   if (!user && !isAuthRoute) {
     const redirectUrl = request.nextUrl.clone();
