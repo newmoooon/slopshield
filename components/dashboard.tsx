@@ -34,7 +34,13 @@ interface LatestResult {
   metrics: CrunchedMetrics;
 }
 
-export function Dashboard({ initialScans }: { initialScans: ScanRecord[] }) {
+export function Dashboard({
+  initialScans,
+  demo = false,
+}: {
+  initialScans: ScanRecord[];
+  demo?: boolean;
+}) {
   const [scans, setScans] = useState<ScanRecord[]>(initialScans);
   const [latest, setLatest] = useState<LatestResult | null>(null);
   const [url, setUrl] = useState("");
@@ -53,6 +59,14 @@ export function Dashboard({ initialScans }: { initialScans: ScanRecord[] }) {
 
   function handleDelete(scanId: string) {
     if (deletingId) return;
+    // Demo rows are sample data with synthetic ids — handle them locally so
+    // the zero-credential tour never surfaces a server error.
+    if (demo) {
+      setScans((previous) => previous.filter((scan) => scan.id !== scanId));
+      setLatest((previous) => (previous?.scan.id === scanId ? null : previous));
+      toast.success("Scan removed (demo data only)");
+      return;
+    }
     setDeletingId(scanId);
     startDeleteTransition(async () => {
       const result = await deleteScan(scanId);
@@ -71,6 +85,11 @@ export function Dashboard({ initialScans }: { initialScans: ScanRecord[] }) {
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
+
+    if (demo) {
+      toast.info("Demo mode shows sample data only — sign in with GitHub to audit a real PR.");
+      return;
+    }
 
     startTransition(async () => {
       const result = await analyzePullRequest(url);

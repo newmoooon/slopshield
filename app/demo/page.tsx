@@ -13,8 +13,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * Zero-credential demo: the full dashboard rendered over representative
- * sample telemetry. Running a real audit from here fails gracefully with a
- * toast — sign-in and API keys are required for live scans.
+ * sample telemetry. Interactions stay client-side (audit prompts a sign-in
+ * toast, deletes act on the sample rows locally) — no server errors surface
+ * in the tour.
  */
 export default function DemoPage() {
   return (
@@ -31,7 +32,7 @@ export default function DemoPage() {
           </p>
         </div>
       </div>
-      <Dashboard initialScans={DEMO_SCANS} />
+      <Dashboard initialScans={DEMO_SCANS} demo />
     </>
   );
 }
